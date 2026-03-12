@@ -137,7 +137,7 @@ void loop() {
 
         bool flagOn = checkFlag();
         if (flagOn) {
-          //Serial.println("Flag TRUE → Waiting for NFC to CREATE...");
+          Serial.println("Flag TRUE → Waiting for NFC to CREATE...");
           currentState = WAIT_FOR_NFC_CREATE;
         } else {
           //Serial.println("Flag FALSE → Waiting for NFC to VALIDATE...");

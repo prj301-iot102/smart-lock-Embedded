@@ -16,7 +16,7 @@ Servo myServo;
 
 void setup() {  
   Serial.begin(9600);    // For debugging
-  espSerial.begin(115200); // For talking to ESP8266
+  espSerial.begin(9600); // For talking to ESP8266
   SPI.begin();  
   mfrc522.PCD_Init();    
   myServo.attach(SERVO_PIN);  
@@ -25,7 +25,22 @@ void setup() {
   Serial.println("Ready. Scan Card...");
 }
 
-void loop() {  
+void loop() {
+  // --- PART A: Check for Background Commands from ESP (like <CR> or <VA>) ---
+  if (espSerial.available()) {
+    char c = espSerial.read();
+    if (c == '<') {
+      delay(10); // Let the buffer fill
+      char command = espSerial.read();
+      
+      if (command == 'C') { // Received <CR> from ESP
+        creatingBeep();
+      }
+      // You can add more background commands here if needed
+    }
+  }
+
+  // --- PART B: Check for New NFC Card ---
   if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) return;
 
   // 1. Get UID (No spaces)
@@ -40,34 +55,37 @@ void loop() {
   Serial.println("Sent to ESP: " + uid);
   espSerial.println(uid); 
 
-  // 3. Wait for ESP8266 validation response
+  // 3. Wait for validation response (Locking loop for feedback)
   unsigned long startWait = millis();
   bool responseReceived = false;
-  while (millis() - startWait < 10000) {
+
+  while (millis() - startWait < 5000) { 
     if (espSerial.available()) {
       char c = espSerial.read();
-      Serial.print("ESP_DEBUG: 0x");
-      if (c < 0x10) Serial.print("0");
-      Serial.print(c, HEX);
-      Serial.print(" (");
-      if (c >= 32 && c <= 126) Serial.write(c); // Print as char if printable
-      else Serial.print("NonPrint");
-      Serial.println(")");
-      if (c == '<') { // Look for the start of the packet
-        char command = espSerial.read(); // Read the actual command
+      if (c == '<') { 
+        delay(10); 
+        char command = espSerial.read(); 
+
         if (command == '1') {
           openDoor();
           responseReceived = true;
+          break;
         } else if (command == '0') {
           denyAccess();
           responseReceived = true;
-        }
-        break; // Exit the loop after processing
+          break;
+        } else if (command == 'S') { // <SC>
+          successCreateBeep();
+          responseReceived = true;
+          break;
+        } else if (command == 'F') { // <FC>
+          failCreateBeep();
+          responseReceived = true;
+          break;
+        } 
       }
     }
   }
-
-
 
   if(!responseReceived) Serial.println("Timeout: No response from ESP");
 
@@ -87,4 +105,32 @@ void denyAccess() {
   for(int i=0; i<3; i++) {
     digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); delay(100);
   }
+}
+
+void successCreateBeep() {
+  Serial.println("Create Successful!");
+  for(int i=0; i<2; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(600); // Long beep
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(200);
+  }
+}
+
+void failCreateBeep() {
+  Serial.println("Create Failed!");
+  for(int i=0; i<3; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(600); // Long beep
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(200);
+  }
+}
+
+void creatingBeep() {
+  Serial.println("Creating");
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(600); // Long beep
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(200);
 }
